@@ -7,9 +7,13 @@
  *   npm run demo -- runs                             list recorded runs
  *   npm run demo -- show <runId|latest>              print the execution timeline
  *   npm run demo -- replay <runId|latest>            strict replay from the log
- *   npm run demo -- fork <runId> [--write stub|block|allow]
+ *   npm run demo -- fork <runId> [--write stub|block|allow] [--original]
  *                                                     re-run with fixed instructions; model
  *                                                     live, tools from the log (hybrid)
+ *   npm run demo -- fork <runId> --at-seq N [--api v1|v2] [--original] [--write …]
+ *                                                     replay exactly up to seq N (the first column
+ *                                                     of `show`), then everything live from there
+ *   --original keeps the recorded instructions instead of applying the fix.
  *   npm run demo -- diff <runA> <runB> [--tools]     first point of divergence
  */
 import { startRun, FileStore, formatTimeline, firstDivergence, formatDivergence, type ReplayOptions, type RunStartEvent } from "agentreplay";
@@ -83,8 +87,21 @@ async function main() {
     case "fork": {
       const source = resolveRun(rest[0]);
       const writePolicy = (flag("write") ?? "stub") as "stub" | "block" | "allow";
-      const input = { ...recordedInput(source), instructions: FIXED_INSTRUCTIONS }; // the "modified instructions"
-      const r = await run(agentOf(source).name, input, { sourceRunId: source, mode: "hybrid", writePolicy });
+      const recorded = recordedInput(source);
+      // The "modified instructions", unless --original.
+      const input = flag("original") ? recorded : { ...recorded, instructions: FIXED_INSTRUCTIONS };
+      const atSeq = flag("at-seq");
+      let replay: ReplayOptions;
+      if (atSeq !== undefined) {
+        const forkAtSeq = Number(atSeq);
+        if (!Number.isInteger(forkAtSeq) || forkAtSeq < 0) throw new Error(`--at-seq needs a seq number (first column of \`show\`), got "${atSeq}"`);
+        // Only affects calls after the fork point: earlier ones come from the log.
+        if (flag("api")) process.env.SHIPMENT_API = flag("api");
+        replay = { sourceRunId: source, mode: "fork", forkAtSeq, writePolicy };
+      } else {
+        replay = { sourceRunId: source, mode: "hybrid", writePolicy };
+      }
+      const r = await run(agentOf(source).name, input, replay);
       console.log(formatTimeline(store, r.runId));
       if (r.output) console.log(`\n${r.output}`);
       console.log("\n" + formatDivergence(firstDivergence(store, source, r.runId, { toolsOnly: true })));

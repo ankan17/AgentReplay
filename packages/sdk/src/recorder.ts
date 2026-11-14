@@ -114,7 +114,10 @@ export interface ReplayOptions {
   sourceRunId: string;
   /**
    * strict  every call served from the log; any divergence throws.
-   * fork    calls recorded before `forkAtSeq` come from the log, later ones go live.
+   * fork    calls recorded before `forkAtSeq` come from the log (a mismatch there is a
+   *         divergence, recorded, then live); from the first call at/after `forkAtSeq`
+   *         — or once the pre-fork calls are used up — everything is live. Write tools
+   *         that go live still obey `writePolicy`.
    * hybrid  model calls go live, tool calls come from the log when they match.
    */
   mode: ReplayMode;
@@ -138,12 +141,20 @@ type Resolution =
 export class ReplaySource {
   readonly opts: ReplayOptions;
   private calls = new Map<string, RecordedCall>();
+  /** Fork mode: recorded calls before the fork point not yet replayed. */
+  private preForkRemaining = 0;
+  /** Fork mode: the run has reached the fork point and is running live. */
+  private forked = false;
 
   constructor(store: FileStore, opts: ReplayOptions) {
     this.opts = opts;
+    if (opts.mode === "fork" && opts.forkAtSeq !== undefined && !(Number.isInteger(opts.forkAtSeq) && opts.forkAtSeq >= 0)) {
+      throw new Error(`forkAtSeq must be a non-negative integer, got ${opts.forkAtSeq}`);
+    }
     for (const e of store.readEvents(opts.sourceRunId)) {
       if (e.kind === "model.request" || e.kind === "tool.call") {
         this.calls.set(keyStr(e.key), { request: e });
+        if (e.seq < (opts.forkAtSeq ?? Infinity)) this.preForkRemaining++;
       } else if (e.kind === "model.response" || e.kind === "tool.result") {
         const rec = this.calls.get(keyStr(e.key));
         if (rec && e.source !== "blocked") rec.response = e;
@@ -156,7 +167,17 @@ export class ReplaySource {
     const rec = this.calls.get(keyStr(key));
 
     if (mode === "hybrid" && key.target.startsWith("model:")) return { action: "live" };
-    if (mode === "fork" && rec && rec.request.seq >= forkAtSeq) return { action: "live" };
+    if (mode === "fork") {
+      // From the fork point on everything is live, including calls the
+      // recording never made — taking a new path is the point of a fork,
+      // so those are not divergences.
+      if (rec && rec.request.seq >= forkAtSeq) this.forked = true;
+      if (this.forked || (!rec && this.preForkRemaining === 0)) {
+        this.forked = true;
+        return { action: "live" };
+      }
+      if (rec) this.preForkRemaining--;
+    }
 
     if (!rec || !rec.response) return { action: "diverged", reason: "missing", recorded: rec };
     if (rec.request.key.requestHash !== key.requestHash) {
@@ -365,6 +386,9 @@ export async function startRun<I, T>(
   opts: RunOptions = {},
 ): Promise<RunResult<T>> {
   const store = opts.store ?? new FileStore();
+  // Validate replay options (and read the source run) before anything is written,
+  // so a bad replay request doesn't leave a "running" run behind in the store.
+  const replay = opts.replay ? new ReplaySource(store, opts.replay) : undefined;
   const runId = `${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}-${randomUUID().slice(0, 6)}`;
 
   const meta: RunMeta = {
@@ -385,7 +409,7 @@ export async function startRun<I, T>(
 
   const run: RunState = {
     meta, store, startMs: Date.now(), seq: 0, callCounters: new Map(),
-    replay: opts.replay ? new ReplaySource(store, opts.replay) : undefined,
+    replay,
   };
   const root: Ctx = { run, stack: [{ id: "root", name }] };
 

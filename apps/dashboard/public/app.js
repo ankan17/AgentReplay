@@ -104,7 +104,8 @@ function renderHeader(meta, events) {
       ms != null && el("span", {}, `${ms} ms`),
       el("span", {}, `${events.length} events`),
       meta.replayOf && el("span", {}, `${meta.replayOf.mode} replay of `,
-        el("a", { href: `#${meta.replayOf.runId}`, onclick: (e) => { e.preventDefault(); openRun(meta.replayOf.runId); } }, meta.replayOf.runId)),
+        el("a", { href: `#${meta.replayOf.runId}`, onclick: (e) => { e.preventDefault(); openRun(meta.replayOf.runId); } }, meta.replayOf.runId),
+        meta.replayOf.forkAtSeq != null ? ` at seq ${meta.replayOf.forkAtSeq}` : ""),
       meta.error && el("span", { class: "minus" }, meta.error.message),
     ),
   );

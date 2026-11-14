@@ -36,6 +36,9 @@ npm run demo -- record --api v1              # passing run
 npm run demo -- record --api v2              # fails at the refund step
 npm run demo -- replay latest                # strict replay: same failure, no live calls, no refund
 npm run demo -- fork latest                  # fixed instructions; model live, tools from log, write stubbed
+npm run demo -- fork latest --at-seq 9 --api v1 --original
+                                             # replay exactly up to seq 9 (first column of `show`),
+                                             # then live: "what if the carrier had said v1 here?"
 
 # the same agent on the Vercel AI SDK (scripted model by default — no key needed)
 npm run demo -- record --ai-sdk --api v2     # refund fails; the model sees the tool error
@@ -119,7 +122,8 @@ CLI: `npx agentreplay runs | show <runId> | diff <a> <b> [--tools]`
 - [ ] Vercel AI SDK adapter — sketch in `packages/ai-sdk` (middleware, `generateText` + `streamText`,
       tool auto-wrap). Open: streaming tool output, `ToolLoopAgent`, provider-executed tools, pinning policy
 - [ ] Streaming chunk capture for `ChatModel` (the AI SDK path already records chunks)
-- [ ] `fork --at-seq N`
+- [x] `fork --at-seq N` — exact replay before the fork point, live from it; new paths after the
+      fork point are not divergences
 - [ ] SQLite index (`node:sqlite`) for cross-run queries
 - [ ] Dashboard: side-by-side run view, React/Vite rewrite once the views settle
 - [ ] Redaction at record time

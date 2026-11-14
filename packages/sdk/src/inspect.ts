@@ -16,7 +16,10 @@ export function formatTimeline(store: FileStore, runId: string): string {
   const meta = store.readMeta(runId);
   const lines = [
     `run ${meta.runId}  "${meta.name}"  status=${meta.status}` +
-      (meta.replayOf ? `  (${meta.replayOf.mode} replay of ${meta.replayOf.runId})` : ""),
+      (meta.replayOf
+        ? `  (${meta.replayOf.mode} replay of ${meta.replayOf.runId}` +
+          (meta.replayOf.forkAtSeq !== undefined ? ` at seq ${meta.replayOf.forkAtSeq}` : "") + ")"
+        : ""),
   ];
   let step = 0;
   for (const e of store.readEvents(runId)) {
