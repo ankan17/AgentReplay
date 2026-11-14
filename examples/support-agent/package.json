@@ -3,7 +3,13 @@
   "private": true,
   "type": "module",
   "description": "Demo support agent with a planted step-5 failure, used to exercise agentreplay",
-  "dependencies": { "agentreplay": "*" },
+  "dependencies": {
+    "agentreplay": "*",
+    "@agentreplay/ai-sdk": "*",
+    "ai": "^7.0.0",
+    "@ai-sdk/openai": "^4.0.0",
+    "@ai-sdk/anthropic": "^4.0.0"
+  },
   "scripts": {
     "record": "node --conditions=development cli.ts record",
     "cli": "node --conditions=development cli.ts",

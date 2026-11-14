@@ -13,7 +13,8 @@ side-effecting tools.
 packages/sdk/              agentreplay           ← the npm package you install in your agent
 packages/ai-sdk/           @agentreplay/ai-sdk   ← Vercel AI SDK adapter (sketch, targets ai@7)
 apps/dashboard/            @agentreplay/dashboard ← local web UI for recorded runs
-examples/support-agent/    demo agent with a planted step-5 failure + tests
+examples/support-agent/    demo agent with a planted step-5 failure + tests,
+                           in two versions: core ChatModel (agent.ts) and Vercel AI SDK (agent-ai-sdk.ts)
 ```
 
 | Level | What it does | Who uses it |
@@ -35,6 +36,13 @@ npm run demo -- record --api v1              # passing run
 npm run demo -- record --api v2              # fails at the refund step
 npm run demo -- replay latest                # strict replay: same failure, no live calls, no refund
 npm run demo -- fork latest                  # fixed instructions; model live, tools from log, write stubbed
+
+# the same agent on the Vercel AI SDK (scripted model by default — no key needed)
+npm run demo -- record --ai-sdk --api v2     # refund fails; the model sees the tool error
+npm run demo -- record --ai-sdk --stream     # same, via streamText
+npm run demo -- replay latest                # replay/fork pick the agent that recorded the run
+npm run demo -- record --ai-sdk --model openai:gpt-5   # real model (OPENAI_API_KEY);
+                                                       # strict replay of it needs no key
 
 npm run dashboard                            # → http://localhost:4317
 npm test
