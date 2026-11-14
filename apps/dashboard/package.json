@@ -1,0 +1,13 @@
+{
+  "name": "@agentreplay/dashboard",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Local web dashboard for AgentReplay traces: timeline, context inspector, run diff",
+  "type": "module",
+  "bin": { "agentreplay-dashboard": "./src/server.ts" },
+  "dependencies": { "agentreplay": "*" },
+  "scripts": {
+    "start": "node --conditions=development src/server.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

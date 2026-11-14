@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AgentReplay</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="logo">⟲</span> AgentReplay</div>
+    <div class="store" id="store"></div>
+  </header>
+  <div class="layout">
+    <aside>
+      <div class="aside-title">Runs</div>
+      <ul id="runs"></ul>
+    </aside>
+    <main>
+      <div id="run-header" class="run-header empty">Select a run</div>
+      <div id="compare" class="compare hidden">
+        <label>Compare with
+          <select id="compare-select"><option value="">—</option></select>
+        </label>
+        <label class="check"><input type="checkbox" id="tools-only" /> tool calls only</label>
+        <div id="diff"></div>
+      </div>
+      <ol id="timeline" class="timeline"></ol>
+    </main>
+    <section id="detail" class="detail hidden">
+      <div class="detail-head"><span id="detail-title"></span><button id="close">×</button></div>
+      <div id="detail-body"></div>
+    </section>
+  </div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

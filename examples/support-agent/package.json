@@ -1,0 +1,13 @@
+{
+  "name": "@agentreplay/example-support-agent",
+  "private": true,
+  "type": "module",
+  "description": "Demo support agent with a planted step-5 failure, used to exercise agentreplay",
+  "dependencies": { "agentreplay": "*" },
+  "scripts": {
+    "record": "node --conditions=development cli.ts record",
+    "cli": "node --conditions=development cli.ts",
+    "test": "node --conditions=development --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

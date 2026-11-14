@@ -1,18 +1,14 @@
 {
-  "name": "agentreplay",
-  "version": "0.0.1",
+  "name": "agentreplay-monorepo",
   "private": true,
   "type": "module",
-  "description": "Deterministic record/replay debugging for TypeScript LLM agents (week-0 starter)",
+  "workspaces": ["packages/*", "apps/*", "examples/*"],
   "engines": { "node": ">=22.18" },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "demo:record": "node demo/cli.ts record",
-    "demo:show": "node demo/cli.ts show latest",
-    "test": "node --test test/*.test.ts"
-  },
-  "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.9.0"
+    "build": "npm run build -w agentreplay",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "dashboard": "node --conditions=development apps/dashboard/src/server.ts --dir examples/support-agent/.agent-replay",
+    "demo": "npm run cli -w @agentreplay/example-support-agent --"
   }
 }

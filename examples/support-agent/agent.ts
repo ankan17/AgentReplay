@@ -18,8 +18,8 @@
  * machinery can be exercised end to end. Swap in a real model via an adapter
  * that implements `ChatModel`.
  */
-import { wrapModel, wrapTool, snapshot } from "../src/recorder.ts";
-import type { ChatMessage, ChatModel, ChatRequest, ChatResponse } from "../src/schema.ts";
+import { wrapModel, wrapTool, snapshot } from "agentreplay";
+import type { ChatMessage, ChatModel, ChatRequest, ChatResponse } from "agentreplay";
 
 // ---------------------------------------------------------------------------
 // Fake external systems

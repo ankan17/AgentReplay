@@ -1,19 +1,16 @@
 /**
  * Demo CLI.
  *
- *   node demo/cli.ts record [--api v1|v2] [--fixed]   run the agent live and record it
- *   node demo/cli.ts runs                             list recorded runs
- *   node demo/cli.ts show <runId|latest>              print the execution timeline
- *   node demo/cli.ts replay <runId|latest>            strict replay from the log
- *   node demo/cli.ts fork <runId> [--write stub|block|allow]
+ *   npm run demo -- record [--api v1|v2] [--fixed]   run the agent live and record it
+ *   npm run demo -- runs                             list recorded runs
+ *   npm run demo -- show <runId|latest>              print the execution timeline
+ *   npm run demo -- replay <runId|latest>            strict replay from the log
+ *   npm run demo -- fork <runId> [--write stub|block|allow]
  *                                                     re-run with fixed instructions; model
  *                                                     live, tools from the log (hybrid)
- *   node demo/cli.ts diff <runA> <runB> [--tools]     first point of divergence
+ *   npm run demo -- diff <runA> <runB> [--tools]     first point of divergence
  */
-import { startRun } from "../src/recorder.ts";
-import { FileStore } from "../src/store.ts";
-import { formatTimeline, firstDivergence, formatDivergence } from "../src/inspect.ts";
-import type { RunStartEvent } from "../src/schema.ts";
+import { startRun, FileStore, formatTimeline, firstDivergence, formatDivergence, type RunStartEvent } from "agentreplay";
 import { makeAgent, BASE_INSTRUCTIONS, FIXED_INSTRUCTIONS, AGENT_MODELS, AGENT_TOOLS, type AgentInput } from "./agent.ts";
 
 const store = new FileStore();
@@ -25,7 +22,7 @@ const flag = (name: string) => {
 const resolveRun = (id?: string) => {
   if (id && id !== "latest" && !id.startsWith("--")) return id;
   const runs = store.listRuns();
-  if (!runs.length) throw new Error("No runs recorded yet. Try: node demo/cli.ts record");
+  if (!runs.length) throw new Error("No runs recorded yet. Try: npm run demo -- record");
   return runs[runs.length - 1].runId;
 };
 const recordedInput = (runId: string): AgentInput => {

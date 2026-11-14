@@ -1,2 +1,3 @@
 .agent-replay/
 node_modules/
+dist/

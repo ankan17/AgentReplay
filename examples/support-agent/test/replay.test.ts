@@ -3,10 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startRun } from "../src/recorder.ts";
-import { FileStore } from "../src/store.ts";
-import { firstDivergence } from "../src/inspect.ts";
-import { makeAgent, PAYMENTS_LEDGER, BASE_INSTRUCTIONS, FIXED_INSTRUCTIONS } from "../demo/agent.ts";
+import { startRun, FileStore, firstDivergence } from "agentreplay";
+import { makeAgent, PAYMENTS_LEDGER, BASE_INSTRUCTIONS, FIXED_INSTRUCTIONS } from "../agent.ts";
 
 const freshStore = () => new FileStore(mkdtempSync(join(tmpdir(), "agent-replay-")));
 const input = { request: "My order #A1001 never arrived", instructions: BASE_INSTRUCTIONS };
