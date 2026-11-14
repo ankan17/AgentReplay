@@ -4,7 +4,9 @@
   "description": "Deterministic record/replay debugging for TypeScript LLM agents",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=22.18" },
+  "engines": {
+    "node": ">=22.18"
+  },
   "exports": {
     ".": {
       "development": "./src/index.ts",
@@ -12,11 +14,16 @@
       "default": "./dist/index.js"
     }
   },
-  "bin": { "agentreplay": "./dist/cli.js" },
-  "files": ["dist"],
+  "bin": {
+    "agentreplay": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --conditions=development --test test/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

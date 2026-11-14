@@ -242,12 +242,18 @@ async function renderDiff() {
       el("div", {}, `First divergence at boundary call #${d.index + 1}: ${d.reason.replace("_", " ")}`),
       el("div", { class: "diff-row" }, `A (${other}): ${where(d.a)}`),
       el("div", { class: "diff-row" }, `B (this run): ${where(d.b)}`),
-      ...d.changes.slice(0, 20).map((c) =>
-        el("div", { class: "diff-row" }, c.path,
-          el("div", { class: "minus" }, `- ${short(JSON.stringify(c.a), 160)}`),
-          el("div", { class: "plus" }, `+ ${short(JSON.stringify(c.b), 160)}`))),
+      d.summary && el("div", { class: "diff-row" }, ...d.summary.map((line) =>
+        el("div", { class: line.trimStart().startsWith("- ") ? "minus" : line.trimStart().startsWith("+ ") ? "plus" : "" }, line))),
+      d.summary ? el("details", {}, el("summary", {}, `Raw changes (${d.changes.length})`), ...rawRows(d.changes)) : rawRows(d.changes),
     ),
   );
+}
+
+function rawRows(changes) {
+  return changes.slice(0, 20).map((c) =>
+    el("div", { class: "diff-row" }, c.path,
+      el("div", { class: "minus" }, `- ${c.a === undefined ? "(absent)" : short(JSON.stringify(c.a), 160)}`),
+      el("div", { class: "plus" }, `+ ${c.b === undefined ? "(absent)" : short(JSON.stringify(c.b), 160)}`)));
 }
 
 $("#compare-select").addEventListener("change", renderDiff);

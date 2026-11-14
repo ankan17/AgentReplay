@@ -115,6 +115,15 @@ for (const api of ["openai-responses", "openai-chat", "anthropic"] as const) {
         assert.equal(d, null, d ? JSON.stringify(d.changes, null, 2) : "");
       });
 
+      test("two live runs that differ only in server-issued ids are summarized as such", async () => {
+        const { store } = freshStore();
+        const a = await startRun("t", input, agent(api, fakeServer(api, { seed: "a" }), stream), { store });
+        const b = await startRun("t", input, agent(api, fakeServer(api, { seed: "b" }), stream), { store });
+        const d = firstDivergence(store, a.runId, b.runId);
+        assert.ok(d, "ids flow back into the next request, so the runs do diverge");
+        assert.deepEqual(d.summary, ["only provider-issued ids differ (e.g. tool call ids) — expected between two live runs"]);
+      });
+
       test("the API key never reaches the trace store", async () => {
         const { dir, store } = freshStore();
         const server = fakeServer(api);

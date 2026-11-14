@@ -112,6 +112,10 @@ CLI: `npx agentreplay runs | show <runId> | diff <a> <b> [--tools]`
   `"ai-sdk/v4"` on model events). The CLI and dashboard view them through formatters in
   `packages/sdk/src/formats.ts` (pure parsers, no framework dependency), so a viewer can read
   any store; a new adapter registers a formatter with `registerModelFormat`.
+- **Diffs speak in conversation terms.** For model calls, `diff` and the dashboard report which
+  message/tool/param changed ("message 6 (tool · getShipment): text changed"), with raw JSON
+  paths underneath. Provider-issued ids (tool call ids) are expected to differ between two live
+  runs and are called out as such rather than shown as changes.
 - **A strict divergence fails the run even if it's caught.** AI SDK `streamText` routes
   model errors to `onError`, which would turn a divergence into an empty "ok" replay.
 - **Packages export TS source under the `development` condition** and compiled `dist/`
