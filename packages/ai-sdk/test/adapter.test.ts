@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateText, streamText, tool, jsonSchema, isStepCount } from "ai";
 import { MockLanguageModelV4, convertArrayToReadableStream } from "ai/test";
-import { startRun, FileStore, firstDivergence } from "agentreplay";
+import { startRun, FileStore, firstDivergence, formatTimeline, viewModelRequest, viewModelResponse, AI_SDK_V4_FORMAT } from "agentreplay";
 import { recordedModel, recordedTools } from "../src/index.ts";
 
 type MockOpts = NonNullable<ConstructorParameters<typeof MockLanguageModelV4>[0]>;
@@ -230,4 +230,53 @@ test("tools without an effect annotation default to write", async () => {
   const tools = recordedTools(rawTools, { effects: { lookupOrder: "read" } });
   assert.equal((tools.lookupOrder.execute as unknown as { spec: { effect: string } }).spec.effect, "read");
   assert.equal((tools.refundOrder.execute as unknown as { spec: { effect: string } }).spec.effect, "write");
+});
+
+// ---------------------------------------------------------------------------
+// Viewing AI SDK runs: payload format + formatters
+// ---------------------------------------------------------------------------
+
+test("model events carry the ai-sdk/v4 format; the timeline renders generate runs", async () => {
+  const store = freshStore();
+  world.totalCents = 4999;
+  const run = await startRun("t", input, makeAgent(), { store });
+  const events = store.readEvents(run.runId);
+  for (const e of events) if (e.kind === "model.request" || e.kind === "model.response") assert.equal(e.format, AI_SDK_V4_FORMAT);
+
+  const timeline = formatTimeline(store, run.runId);
+  assert.match(timeline, /← 2 messages  \(generate\)/);             // system + user
+  assert.match(timeline, /model → call lookupOrder\({"orderId":"A1001"}\)/);
+  assert.match(timeline, /model → "Refunded 4999 cents \(ref RF-A1001\)\."/);
+
+  // The context window of the last step shows tool results as their own messages.
+  const lastReq = events.filter((e) => e.kind === "model.request").at(-1)!;
+  assert.ok(lastReq.kind === "model.request");
+  const view = viewModelRequest(lastReq.format, store.getBlob(lastReq.request));
+  assert.deepEqual(view.messages.map((m) => m.role), ["system", "user", "assistant", "tool", "assistant", "tool"]);
+  assert.equal(view.messages[0].text, "You are a support agent.");
+  assert.deepEqual(view.messages[2].toolCalls?.[0], { id: "call-1", name: "lookupOrder", args: { orderId: "A1001" } });
+  assert.equal(view.messages[3].toolName, "lookupOrder");
+  assert.equal(view.messages[3].text, '{"orderId":"A1001","totalCents":4999}');
+  assert.deepEqual(view.tools.map((t) => t.name), ["lookupOrder", "refundOrder"]);
+});
+
+test("the timeline reassembles streamed responses, including on replay", async () => {
+  const store = freshStore();
+  const original = await startRun("t", input, makeAgent(mockModel(), { stream: true }), { store });
+  const replayed = await startRun("t", input, makeAgent(mockModel(), { stream: true }), {
+    store, replay: { sourceRunId: original.runId, mode: "strict" },
+  });
+  for (const id of [original.runId, replayed.runId]) {
+    const timeline = formatTimeline(store, id);
+    assert.match(timeline, /← 2 messages  \(stream\)/);
+    assert.match(timeline, /model → "Refunded 4999 cents \(ref RF-A1001\)\."  \[(live|log)\]  \(stream, \d+ chunks\)/);
+  }
+  const res = store.readEvents(replayed.runId).find((e) => e.kind === "model.response");
+  assert.ok(res?.kind === "model.response" && res.source === "log" && res.format === AI_SDK_V4_FORMAT);
+});
+
+test("unknown or malformed payloads fall back to raw instead of crashing", () => {
+  assert.match(viewModelRequest("someone-else/v1", { x: 1 }).note!, /unknown payload format/);
+  assert.match(viewModelResponse(AI_SDK_V4_FORMAT, { nope: true }).note!, /doesn't match format "ai-sdk\/v4"/);
+  assert.match(viewModelRequest(undefined, { prompt: [] }).note!, /doesn't match format "chat"/);
 });

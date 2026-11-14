@@ -6,7 +6,7 @@
  *
  * API
  *   GET /api/runs                     run metadata, newest first
- *   GET /api/runs/:runId              { meta, events }
+ *   GET /api/runs/:runId              { meta, events, views }  views: seq → normalized model request/response
  *   GET /api/blobs/:sha256            raw payload JSON
  *   GET /api/diff?a=&b=[&tools=1]     first divergence between two runs
  */
@@ -14,7 +14,8 @@ import { createServer, type ServerResponse } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FileStore, firstDivergence } from "agentreplay";
+import { FileStore, firstDivergence, viewModelRequest, viewModelResponse } from "agentreplay";
+import type { TraceEvent } from "agentreplay";
 
 const args = process.argv.slice(2);
 const opt = (name: string, fallback: string) => {
@@ -45,6 +46,20 @@ function send(res: ServerResponse, status: number, body: unknown, type = "applic
   res.end(typeof body === "string" ? body : JSON.stringify(body));
 }
 
+/**
+ * Model payloads come in several formats (core ChatRequest, AI SDK, …).
+ * Normalize them here, with the formatters from the SDK, so the browser
+ * renders one shape and never has to know which integration recorded a run.
+ */
+function modelViews(events: TraceEvent[]) {
+  const views: Record<number, unknown> = {};
+  for (const e of events) {
+    if (e.kind === "model.request") views[e.seq] = viewModelRequest(e.format, store.getBlob(e.request));
+    else if (e.kind === "model.response") views[e.seq] = viewModelResponse(e.format, store.getBlob(e.response));
+  }
+  return views;
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname;
@@ -59,7 +74,8 @@ const server = createServer((req, res) => {
     let m = path.match(/^\/api\/runs\/([^/]+)$/);
     if (m) {
       if (!RUN_ID.test(m[1])) return send(res, 400, { error: "bad run id" });
-      return send(res, 200, { meta: store.readMeta(m[1]), events: store.readEvents(m[1]) });
+      const events = store.readEvents(m[1]);
+      return send(res, 200, { meta: store.readMeta(m[1]), events, views: modelViews(events) });
     }
     m = path.match(/^\/api\/blobs\/([^/]+)$/);
     if (m) {

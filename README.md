@@ -97,6 +97,10 @@ CLI: `npx agentreplay runs | show <runId> | diff <a> <b> [--tools]`
   and continue live.
 - **Write tools during replay: `block` (default) | `stub` | `allow`.**
 - **Run input includes agent config**, so replay rebuilds the same agent.
+- **Model payloads are stored in their native format and tagged** (`format: "chat"` or
+  `"ai-sdk/v4"` on model events). The CLI and dashboard view them through formatters in
+  `packages/sdk/src/formats.ts` (pure parsers, no framework dependency), so a viewer can read
+  any store; a new adapter registers a formatter with `registerModelFormat`.
 - **A strict divergence fails the run even if it's caught.** AI SDK `streamText` routes
   model errors to `onError`, which would turn a divergence into an empty "ok" replay.
 - **Packages export TS source under the `development` condition** and compiled `dist/`

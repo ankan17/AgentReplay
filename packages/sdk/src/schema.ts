@@ -85,12 +85,19 @@ export interface ModelRequestEvent extends EventBase {
   key: CallKey;
   modelId: string;
   request: BlobRef; // messages + tool specs + params
+  /**
+   * Shape of the request/response payloads, e.g. "chat" (ChatRequest) or
+   * "ai-sdk/v4". Absent on older traces, meaning "chat". See formats.ts.
+   */
+  format?: string;
 }
 
 export interface ModelResponseEvent extends EventBase {
   kind: "model.response";
   key: CallKey;
   response: BlobRef;
+  /** Same as the matching request's `format`. */
+  format?: string;
   latencyMs: number;
   /** "live" = real call, "log" = served from a recorded run. */
   source: "live" | "log";

@@ -1,6 +1,7 @@
 import type { FileStore } from "./store.ts";
 import type { ModelRequestEvent, ToolCallEvent, TraceEvent } from "./schema.ts";
 import { keyStr } from "./recorder.ts";
+import { viewModelRequest, viewModelResponse } from "./formats.ts";
 
 // ---------------------------------------------------------------------------
 // Timeline
@@ -24,13 +25,17 @@ export function formatTimeline(store: FileStore, runId: string): string {
       case "run.start":
         lines.push(`${p}▶ input ${short(store.getBlob(e.input))}`);
         break;
-      case "model.request":
-        lines.push(`${p}[call ${++step}] model ${e.modelId} ← ${store.getBlob<{ messages: unknown[] }>(e.request).messages.length} messages`);
+      case "model.request": {
+        const v = viewModelRequest(e.format, store.getBlob(e.request));
+        const note = v.note ? `  (${v.note})` : "";
+        lines.push(`${p}[call ${++step}] model ${e.modelId} ← ${v.messages.length} messages${note}`);
         break;
+      }
       case "model.response": {
-        const r = store.getBlob<{ message: { content: string; toolCalls?: { name: string; args: unknown }[] } }>(e.response);
-        const calls = r.message.toolCalls?.map((t) => `${t.name}(${short(t.args, 60)})`).join(", ");
-        lines.push(`${p}         model → ${calls ? `call ${calls}` : short(r.message.content)}  [${e.source}]`);
+        const v = viewModelResponse(e.format, store.getBlob(e.response));
+        const calls = v.toolCalls.map((t) => `${t.name}(${short(t.args, 60)})`).join(", ");
+        const note = v.note ? `  (${v.note})` : "";
+        lines.push(`${p}         model → ${calls ? `call ${calls}` : short(v.text)}  [${e.source}]${note}`);
         break;
       }
       case "tool.call":

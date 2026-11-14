@@ -14,7 +14,7 @@
  */
 import { wrapLanguageModel } from "ai";
 import type { LanguageModel, LanguageModelMiddleware, Tool, ToolSet } from "ai";
-import { beginModelCall, wrapTool, type ToolEffect } from "agentreplay";
+import { AI_SDK_V4_FORMAT, beginModelCall, wrapTool, type ToolEffect } from "agentreplay";
 
 // Provider spec types, derived from the public middleware type so we don't
 // need a direct dependency on @ai-sdk/provider.
@@ -92,7 +92,7 @@ export function agentReplayMiddleware(): LanguageModelMiddleware {
     specificationVersion: "v4",
 
     async wrapGenerate({ doGenerate, params, model }) {
-      const call = beginModelCall<GenerateResult>(modelIdOf(model), requestOf("generate", params));
+      const call = beginModelCall<GenerateResult>(modelIdOf(model), requestOf("generate", params), { format: AI_SDK_V4_FORMAT });
       if (!call) return doGenerate();
       if (call.recorded) return reviveResult(call.recorded);
 
@@ -102,7 +102,7 @@ export function agentReplayMiddleware(): LanguageModelMiddleware {
     },
 
     async wrapStream({ doStream, params, model }) {
-      const call = beginModelCall<RecordedStream>(modelIdOf(model), requestOf("stream", params));
+      const call = beginModelCall<RecordedStream>(modelIdOf(model), requestOf("stream", params), { format: AI_SDK_V4_FORMAT });
       if (!call) return doStream();
       if (call.recorded) return { stream: streamFrom(call.recorded.parts) };
 

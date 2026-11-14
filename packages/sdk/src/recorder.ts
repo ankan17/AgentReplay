@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { hashValue } from "./hash.ts";
 import { FileStore } from "./store.ts";
+import { CHAT_FORMAT } from "./formats.ts";
 import {
   SCHEMA_VERSION,
   type CallKey,
@@ -285,23 +286,28 @@ export interface ModelCall<Res> {
  *
  * `request` is stored verbatim; `hashInput` (default: `request`) is what the
  * CallKey hashes, so adapters can keep transport noise out of matching.
+ * `format` names the payload shape for viewers (default "chat"; see formats.ts).
  * Returns null outside a run.
  */
 export function beginModelCall<Res>(
   modelId: string,
   request: unknown,
-  opts: { hashInput?: unknown } = {},
+  opts: { hashInput?: unknown; format?: string } = {},
 ): ModelCall<Res> | null {
   const c = ctx();
   if (!c) return null;
 
   const key = nextKey(c, `model:${modelId}`, "hashInput" in opts ? opts.hashInput : request);
   const store = c.run.store;
-  emit(c, { kind: "model.request", key, modelId, request: store.putBlob(request) });
+  const format = opts.format ?? CHAT_FORMAT;
+  emit(c, { kind: "model.request", key, modelId, request: store.putBlob(request), format });
 
   const recorded = replayDecision(c, key) as ModelResponseEvent | null;
   if (recorded) {
-    emit(c, { kind: "model.response", key, response: recorded.response, latencyMs: 0, source: "log" });
+    emit(c, {
+      kind: "model.response", key, response: recorded.response,
+      format: recorded.format ?? CHAT_FORMAT, latencyMs: 0, source: "log",
+    });
     return { recorded: store.getBlob<Res>(recorded.response), finish: () => {} };
   }
 
@@ -313,7 +319,7 @@ export function beginModelCall<Res>(
       if (done) throw new Error(`model call ${keyStr(key)} already finished`);
       done = true;
       emit(c, {
-        kind: "model.response", key, response: store.putBlob(response),
+        kind: "model.response", key, response: store.putBlob(response), format,
         latencyMs: Math.round(performance.now() - t0), source: "live",
       });
     },

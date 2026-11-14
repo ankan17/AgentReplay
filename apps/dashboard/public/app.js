@@ -29,7 +29,7 @@ const short = (v, n = 110) => {
 };
 const badge = (text, cls = text) => el("span", { class: `badge ${cls}` }, text);
 
-let state = { runs: [], current: null, steps: [], selected: null };
+let state = { runs: [], current: null, steps: [], views: {}, selected: null };
 
 // ---------------------------------------------------------------------------
 // Runs list
@@ -83,9 +83,9 @@ function buildSteps(events) {
 async function openRun(runId) {
   location.hash = runId;
   document.querySelectorAll("#runs li").forEach((li) => li.classList.toggle("active", li.dataset.id === runId));
-  const { meta, events } = await api(`/api/runs/${runId}`);
+  const { meta, events, views } = await api(`/api/runs/${runId}`);
   const { steps, start, end } = buildSteps(events);
-  state = { ...state, current: meta, steps, selected: null };
+  state = { ...state, current: meta, steps, views: views ?? {}, selected: null };
   closeDetail();
   renderHeader(meta, events);
   renderCompare(meta);
@@ -114,9 +114,11 @@ async function stepSummary(step) {
   const { request: rq, response: rs } = step;
   if (rq.kind === "model.request") {
     if (!rs) return "no response";
-    const r = await blob(rs.response);
-    const calls = r?.message?.toolCalls;
-    return calls?.length ? `→ ${calls.map((c) => `${c.name}(${short(c.args, 60)})`).join(", ")}` : `→ ${short(r?.message?.content ?? "")}`;
+    const v = state.views[rs.seq];
+    if (!v) return "→ (no view)";
+    const calls = v.toolCalls;
+    const out = calls.length ? `→ ${calls.map((c) => `${c.name}(${short(c.args, 60)})`).join(", ")}` : `→ ${short(v.text)}`;
+    return v.note ? `${out}  (${v.note})` : out;
   }
   const args = await blob(rq.args);
   if (!rs) return `${short(args, 70)} → (no result)`;
@@ -165,8 +167,8 @@ function pre(value) {
 function messages(list) {
   return el("div", {}, ...list.map((m) =>
     el("div", { class: "msg" },
-      el("div", { class: "role" }, m.role + (m.toolCallId ? ` · ${m.toolCallId}` : "")),
-      m.content && el("div", { class: "content" }, m.content),
+      el("div", { class: "role" }, m.role + (m.toolName ? ` · ${m.toolName}` : "") + (m.toolCallId ? ` · ${m.toolCallId}` : "")),
+      m.text && el("div", { class: "content" }, m.text),
       m.toolCalls?.length && pre(m.toolCalls),
     )));
 }
@@ -177,11 +179,23 @@ async function selectStep(i, node) {
   const s = state.steps[i];
   const body = [];
   if (s.request.kind === "model.request") {
-    const req = await blob(s.request.request);
+    const req = state.views[s.request.seq];
+    const res = s.response && state.views[s.response.seq];
+    if (req?.note) body.push(el("div", { class: "summary" }, `${s.request.format ?? "chat"} · ${req.note}`));
     body.push(el("h4", {}, `Context window (${req.messages.length} messages)`), messages(req.messages));
-    body.push(el("h4", {}, `Tools available (${req.tools.length})`), el("div", {}, ...req.tools.map((t) => el("div", { class: "summary" }, `${t.name} [${t.effect}] — ${t.description}`))));
-    if (req.params) body.push(el("h4", {}, "Params"), pre(req.params));
-    if (s.response) body.push(el("h4", {}, `Response [${s.response.source}]`), pre(await blob(s.response.response)));
+    body.push(el("h4", {}, `Tools available (${req.tools.length})`), el("div", {}, ...req.tools.map((t) =>
+      el("div", { class: "summary" }, `${t.name}${t.effect ? ` [${t.effect}]` : ""}${t.description ? ` — ${t.description}` : ""}`))));
+    if (req.params && Object.keys(req.params).length) body.push(el("h4", {}, "Params"), pre(req.params));
+    if (s.response) {
+      body.push(el("h4", {}, `Response [${s.response.source}]`));
+      if (res) {
+        body.push(messages([{ role: "assistant", text: res.text, toolCalls: res.toolCalls.length ? res.toolCalls : undefined }]));
+        const meta = [res.finishReason && `finish: ${res.finishReason}`, res.note].filter(Boolean).join(" · ");
+        if (meta) body.push(el("div", { class: "summary" }, meta));
+      }
+      body.push(el("details", {}, el("summary", {}, "Raw response"), pre(await blob(s.response.response))));
+    }
+    body.push(el("details", {}, el("summary", {}, "Raw request"), pre(await blob(s.request.request))));
   } else {
     body.push(el("h4", {}, `Arguments`), pre(await blob(s.request.args)));
     if (s.response) {
