@@ -30,6 +30,12 @@ interface RunState {
   seq: number;
   callCounters: Map<string, number>;
   replay?: ReplaySource;
+  /**
+   * First strict-mode divergence. Kept on the run so the run still fails if
+   * agent code — or a framework, e.g. AI SDK `streamText`, which routes
+   * errors to `onError` — catches the thrown DivergenceError.
+   */
+  divergence?: DivergenceError;
 }
 
 interface Ctx {
@@ -177,12 +183,14 @@ function replayDecision(c: Ctx, key: CallKey) {
     recordedRequestHash: r.recorded?.request.key.requestHash ?? null,
   });
   if (replay.opts.mode === "strict") {
-    throw new DivergenceError(
+    const err = new DivergenceError(
       r.reason === "missing"
         ? `No recorded call for ${keyStr(key)} — the agent took a path the original run never took.`
         : `Request for ${keyStr(key)} differs from the recording (seq ${r.recorded!.request.seq}).`,
       key, r.recorded?.request.key.requestHash ?? null, r.recorded?.request.seq ?? null,
     );
+    c.run.divergence ??= err;
+    throw err;
   }
   return null; // non-strict: record the divergence and continue live
 }
@@ -191,20 +199,25 @@ function replayDecision(c: Ctx, key: CallKey) {
 // Boundary wrappers
 // ---------------------------------------------------------------------------
 
-export interface WrappedTool<A, R> {
-  (args: A): Promise<R>;
+export interface WrappedTool<A, R, X extends unknown[] = []> {
+  (args: A, ...extra: X): Promise<R>;
   spec: ToolSpec;
 }
 
-export function wrapTool<A, R>(
+/**
+ * Wrap a tool so every call is recorded and replayable. Only `args` is
+ * recorded and hashed; any `extra` arguments (call ids, abort signals,
+ * framework context) are passed through to `fn` untouched.
+ */
+export function wrapTool<A, R, X extends unknown[] = []>(
   spec: Omit<ToolSpec, "effect"> & { effect: ToolEffect },
-  fn: (args: A) => Promise<R>,
-): WrappedTool<A, R> {
+  fn: (args: A, ...extra: X) => Promise<R>,
+): WrappedTool<A, R, X> {
   const target = `tool:${spec.name}`;
 
-  const wrapped = async (args: A): Promise<R> => {
+  const wrapped = async (args: A, ...extra: X): Promise<R> => {
     const c = ctx();
-    if (!c) return fn(args); // not inside a run → plain call
+    if (!c) return fn(args, ...extra); // not inside a run → plain call
 
     const key = nextKey(c, target, args);
     const store = c.run.store;
@@ -235,7 +248,7 @@ export function wrapTool<A, R>(
 
     const t0 = performance.now();
     try {
-      const result = await fn(args);
+      const result = await fn(args, ...extra);
       emit(c, {
         kind: "tool.result", key, ok: true, result: store.putBlob(result),
         latencyMs: Math.round(performance.now() - t0), source: "live",
@@ -254,30 +267,68 @@ export function wrapTool<A, R>(
   return wrapped;
 }
 
+/**
+ * Handle for one in-flight model call, returned by `beginModelCall`.
+ * Adapters (e.g. `@agentreplay/ai-sdk`) build on this instead of `ChatModel`.
+ */
+export interface ModelCall<Res> {
+  /** Set when replay serves this call from the log; the caller must not go live. */
+  readonly recorded: Res | null;
+  /** Record the live response. Call once, and only when `recorded` is null. */
+  finish(response: Res): void;
+}
+
+/**
+ * Low-level model boundary. Emits `model.request`, consults the replay source,
+ * and returns a handle that records the response later — so a streamed
+ * response can be recorded when the stream ends, not when the call returns.
+ *
+ * `request` is stored verbatim; `hashInput` (default: `request`) is what the
+ * CallKey hashes, so adapters can keep transport noise out of matching.
+ * Returns null outside a run.
+ */
+export function beginModelCall<Res>(
+  modelId: string,
+  request: unknown,
+  opts: { hashInput?: unknown } = {},
+): ModelCall<Res> | null {
+  const c = ctx();
+  if (!c) return null;
+
+  const key = nextKey(c, `model:${modelId}`, "hashInput" in opts ? opts.hashInput : request);
+  const store = c.run.store;
+  emit(c, { kind: "model.request", key, modelId, request: store.putBlob(request) });
+
+  const recorded = replayDecision(c, key) as ModelResponseEvent | null;
+  if (recorded) {
+    emit(c, { kind: "model.response", key, response: recorded.response, latencyMs: 0, source: "log" });
+    return { recorded: store.getBlob<Res>(recorded.response), finish: () => {} };
+  }
+
+  const t0 = performance.now();
+  let done = false;
+  return {
+    recorded: null,
+    finish(response: Res) {
+      if (done) throw new Error(`model call ${keyStr(key)} already finished`);
+      done = true;
+      emit(c, {
+        kind: "model.response", key, response: store.putBlob(response),
+        latencyMs: Math.round(performance.now() - t0), source: "live",
+      });
+    },
+  };
+}
+
 export function wrapModel(model: ChatModel): ChatModel {
-  const target = `model:${model.id}`;
   return {
     id: model.id,
     async generate(req: ChatRequest): Promise<ChatResponse> {
-      const c = ctx();
-      if (!c) return model.generate(req);
-
-      const key = nextKey(c, target, req);
-      const store = c.run.store;
-      emit(c, { kind: "model.request", key, modelId: model.id, request: store.putBlob(req) });
-
-      const recorded = replayDecision(c, key) as ModelResponseEvent | null;
-      if (recorded) {
-        emit(c, { kind: "model.response", key, response: recorded.response, latencyMs: 0, source: "log" });
-        return store.getBlob<ChatResponse>(recorded.response);
-      }
-
-      const t0 = performance.now();
+      const call = beginModelCall<ChatResponse>(model.id, req);
+      if (!call) return model.generate(req);
+      if (call.recorded) return call.recorded;
       const res = await model.generate(req);
-      emit(c, {
-        kind: "model.response", key, response: store.putBlob(res),
-        latencyMs: Math.round(performance.now() - t0), source: "live",
-      });
+      call.finish(res);
       return res;
     },
   };
@@ -336,6 +387,7 @@ export async function startRun<I, T>(
     emit(root, { kind: "run.start", input: store.putBlob(input) });
     try {
       const output = await fn(input);
+      if (run.divergence) throw run.divergence; // swallowed somewhere inside fn
       emit(root, { kind: "run.end", status: "ok", output: store.putBlob(output) });
       store.writeMeta({ ...meta, status: "ok", endedAt: new Date().toISOString() });
       return { runId, status: "ok", output };

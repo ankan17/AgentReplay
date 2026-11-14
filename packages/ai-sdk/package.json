@@ -1,0 +1,30 @@
+{
+  "name": "@agentreplay/ai-sdk",
+  "version": "0.0.1",
+  "description": "Vercel AI SDK adapter for AgentReplay (language-model middleware + tool auto-wrap)",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.18" },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --conditions=development --test test/*.test.ts"
+  },
+  "peerDependencies": {
+    "agentreplay": "*",
+    "ai": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ai": "^7.0.0",
+    "typescript": "^5.9.0"
+  }
+}

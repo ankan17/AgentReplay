@@ -11,6 +11,7 @@ side-effecting tools.
 
 ```
 packages/sdk/              agentreplay           ← the npm package you install in your agent
+packages/ai-sdk/           @agentreplay/ai-sdk   ← Vercel AI SDK adapter (sketch, targets ai@7)
 apps/dashboard/            @agentreplay/dashboard ← local web UI for recorded runs
 examples/support-agent/    demo agent with a planted step-5 failure + tests
 ```
@@ -63,6 +64,27 @@ await startRun("support-agent", fixedInput, agent, {
 });
 ```
 
+### With the Vercel AI SDK (sketch)
+
+```ts
+import { generateText, isStepCount } from "ai";
+import { startRun } from "agentreplay";
+import { recordedModel, recordedTools } from "@agentreplay/ai-sdk";
+
+const model = recordedModel(openai("gpt-5"));          // language-model middleware
+const tools = recordedTools({ lookupOrder, refund }, {
+  effects: { lookupOrder: "read", refund: "write" },   // unannotated tools default to "write"
+});
+
+await startRun("agent", input, (i) =>
+  generateText({ model, tools, prompt: i.request, stopWhen: isStepCount(8) }));
+```
+
+The adapter hooks in at `wrapLanguageModel` middleware, not around `generateText`, so each
+step of the internal tool loop is its own recorded model call. `streamText` is recorded
+chunk-by-chunk and replayed as a stream. Request `headers` and `abortSignal` are neither
+stored nor hashed.
+
 CLI: `npx agentreplay runs | show <runId> | diff <a> <b> [--tools]`
 
 ## Design decisions so far
@@ -75,13 +97,16 @@ CLI: `npx agentreplay runs | show <runId> | diff <a> <b> [--tools]`
   and continue live.
 - **Write tools during replay: `block` (default) | `stub` | `allow`.**
 - **Run input includes agent config**, so replay rebuilds the same agent.
+- **A strict divergence fails the run even if it's caught.** AI SDK `streamText` routes
+  model errors to `onError`, which would turn a divergence into an empty "ok" replay.
 - **Packages export TS source under the `development` condition** and compiled `dist/`
   otherwise (`npm run build`).
 
 ## Roadmap
 
-- [ ] Vercel AI SDK adapter (`ChatModel` ↔ `generateText`/`streamText`), auto-wrap `tools: {}`
-- [ ] Streaming chunk capture and replay
+- [ ] Vercel AI SDK adapter — sketch in `packages/ai-sdk` (middleware, `generateText` + `streamText`,
+      tool auto-wrap). Open: streaming tool output, `ToolLoopAgent`, provider-executed tools, pinning policy
+- [ ] Streaming chunk capture for `ChatModel` (the AI SDK path already records chunks)
 - [ ] `fork --at-seq N`
 - [ ] SQLite index (`node:sqlite`) for cross-run queries
 - [ ] Dashboard: side-by-side run view, React/Vite rewrite once the views settle
